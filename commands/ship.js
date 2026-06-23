@@ -1,7 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { CHARACTERS } = require("../data/characters");
 const { RED } = require("../gameLauncher");
-const { randomFrom } = require("../utils");
 
 const shipComments = [
   "والله ما أشوف توافق 😅",
@@ -19,24 +17,29 @@ const shipComments = [
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ship")
-    .setDescription("شيّب شخصيتين HSR مع بعض! 💘"),
+    .setDescription("شيّب شخصين مع بعض! 💘")
+    .addUserOption(opt => opt.setName("person1").setDescription("الشخص الأول 💕").setRequired(true))
+    .addUserOption(opt => opt.setName("person2").setDescription("الشخص الثاني 💕").setRequired(true)),
 
   async execute(interaction) {
-    const chars = [...CHARACTERS];
-    const c1 = randomFrom(chars);
-    let c2 = randomFrom(chars.filter(c => c.name !== c1.name));
+    const p1 = interaction.options.getUser("person1");
+    const p2 = interaction.options.getUser("person2");
 
-    const compatibility = Math.floor(Math.random() * 101);
-    const comment = randomFrom(shipComments);
+    // نفس النتيجة لنفس الزوج دايماً
+    const seed = Math.min(p1.id, p2.id) + Math.max(p1.id, p2.id);
+    let hash = 0;
+    for (const c of seed) hash = (hash * 31 + c.charCodeAt(0)) % 101;
+    const score = hash;
 
-    const hearts = Math.round(compatibility / 10);
+    const hearts = Math.round(score / 10);
     const heartBar = "❤️".repeat(hearts) + "🖤".repeat(10 - hearts);
+    const comment = shipComments[Math.floor(Math.random() * shipComments.length)];
 
     const embed = new EmbedBuilder()
       .setColor(RED)
       .setTitle("💘 Ship Meter!")
       .setDescription(
-        `## ${c1.name} × ${c2.name}\n\n${heartBar}\n\n**${compatibility}%** توافق\n\n*${comment}*`
+        `## ${p1.username} × ${p2.username}\n\n${heartBar}\n\n**${score}%** توافق\n\n*${comment}*`
       );
 
     await interaction.reply({ embeds: [embed] });
