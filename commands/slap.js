@@ -6,6 +6,6 @@ const SLAP_CONFIG = {
 
 const SLAP_CONFIG = {
   template: path.join(__dirname, "../assets/slap_template.jpg"),
-  hitter: { x: 480, y: 200, size: 160 },
-  victim: { x: 840, y: 260, size: 150 },
+  hitter: { x: 430, y: 140, size: 155 },
+  victim: { x: 790, y: 220, size: 145 },
 };
