@@ -4,8 +4,8 @@ const SLAP_CONFIG = {
   victim: { x: 780, y: 250, size: 150 },
 };
 
-const GUNXIE_CONFIG = {
-  template: path.join(__dirname, "../assets/gunxie_template.jpg"),
-  hitter: { x: 1260, y: 170, size: 175 },
-  victim: { x: 330, y: 230, size: 165 },
+const SLAP_CONFIG = {
+  template: path.join(__dirname, "../assets/slap_template.jpg"),
+  hitter: { x: 480, y: 200, size: 160 },
+  victim: { x: 840, y: 260, size: 150 },
 };
