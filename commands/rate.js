@@ -1,57 +1,40 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { CHARACTERS } = require("../data/characters");
 const { RED } = require("../gameLauncher");
-const { randomFrom } = require("../utils");
 
 const ratings = [
-  { score: "S+", comment: "الحرة دي broken بالكامل، Mihoyo وش تسوي 💀" },
-  { score: "S", comment: "شخصية قوية جداً، top tier بلا كلام 🔥" },
-  { score: "A+", comment: "قوية وحلوة، بس تحتاج بيلد صح ⭐" },
-  { score: "A", comment: "solid pick، ما تندم عليها 👍" },
-  { score: "B+", comment: "متوسطة بس لها fans مخلصين 😄" },
-  { score: "B", comment: "تمشي بس فيه بدائل أحسن منها 🙃" },
-  { score: "C", comment: "يعني... personality حلوة على الأقل 😅" },
-  { score: "D", comment: "مسكينة، محد يشغلها في الـ endgame 💀" },
-  { score: "F", comment: "أنا آسف بس الـ meta قاسية 😭 — بس الـ design حلو!" },
-  { score: "???", comment: "الشخصية هذي تتجاوز كل scales معروفة 🤯" },
+  { score: "S+", comment: "broken بالكامل، Mihoyo وش تسوي 💀" },
+  { score: "S", comment: "top tier بلا كلام 🔥" },
+  { score: "A+", comment: "قوي بس يحتاج بيلد صح ⭐" },
+  { score: "A", comment: "solid pick، ما تندم 👍" },
+  { score: "B+", comment: "متوسط بس له fans مخلصين 😄" },
+  { score: "B", comment: "تمشي بس فيه بدائل أحسن 🙃" },
+  { score: "C", comment: "personality حلوة على الأقل 😅" },
+  { score: "D", comment: "مسكين، محد يشغله في endgame 💀" },
+  { score: "F", comment: "أنا آسف بس الـ meta قاسية 😭" },
+  { score: "???", comment: "يتجاوز كل scales معروفة 🤯" },
 ];
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("rate")
-    .setDescription("قيّم شخصية HSR عشوائية بطريقة كوميدية!")
-    .addStringOption(opt =>
-      opt.setName("الشخصية").setDescription("اسم الشخصية (اختياري، وإلا عشوائي)")
+    .setDescription("Sparxie تقيّم عضو في السيرفر ⭐")
+    .addUserOption(opt =>
+      opt.setName("target").setDescription("العضو اللي تبي تقيّمه").setRequired(true)
     ),
 
   async execute(interaction) {
-    const input = interaction.options.getString("الشخصية");
-    let character;
-
-    if (input) {
-      character = CHARACTERS.find(c =>
-        c.name.toLowerCase() === input.toLowerCase()
-      );
-      if (!character) {
-        return interaction.reply({ content: `⚠️ ما لقيت شخصية باسم "${input}"`, ephemeral: true });
-      }
-    } else {
-      character = randomFrom(CHARACTERS);
-    }
-
-    const rating = randomFrom(ratings);
+    const target = interaction.options.getUser("target");
+    const rating = ratings[Math.floor(Math.random() * ratings.length)];
 
     const embed = new EmbedBuilder()
       .setColor(RED)
-      .setTitle(`📊 تقييم ${character.name}`)
+      .setTitle(`📊 تقييم ${target.username}`)
+      .setThumbnail(target.displayAvatarURL({ size: 256 }))
       .addFields(
-        { name: "الندرة", value: "⭐".repeat(character.rarity), inline: true },
-        { name: "العنصر", value: character.element, inline: true },
-        { name: "المسار", value: character.path, inline: true },
         { name: "التقييم", value: `# ${rating.score}`, inline: false },
-        { name: "التعليق", value: rating.comment, inline: false }
+        { name: "تعليق Sparxie", value: rating.comment, inline: false }
       )
-      .setFooter({ text: "هذا التقييم كوميدي بحت 😄" });
+      .setFooter({ text: "هذا التقييم كوميدي بحت 😄 • Sparxie Bot" });
 
     await interaction.reply({ embeds: [embed] });
   },
