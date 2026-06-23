@@ -35,6 +35,13 @@ module.exports = {
             "🗓️ السؤال اليومي: **+25 نقطة**",
         },
         {
+          name: "🎭 ميمات Sparxie",
+          value:
+            "`/slap @ضارب @ضحية` — Sparkle تصفع Robin!\n" +
+            "`/gunxie @مصوّب @هدف` — Topaz تصوّب~\n" +
+            "`/meme` — ميم HSR من Reddit",
+        },
+        {
           name: "🎉 ترفيه",
           value:
             "`/ship` — شيّب شخصيتين 💘\n" +
