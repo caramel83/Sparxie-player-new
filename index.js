@@ -23,6 +23,7 @@ const {
 // ============== إعدادات ==============
 const AUTO_GAME_INTERVAL_MS = 60 * 60 * 1000; // كل ساعة
 const AUTO_GAME_CHANNEL_ID = process.env.AUTO_GAME_CHANNEL_ID;
+const MEME_CHANNEL_ID = process.env.MEME_CHANNEL_ID;
 // =====================================
 
 const client = new Client({
@@ -70,6 +71,7 @@ client.once("ready", () => {
   console.log(`✅ سباركسي شغّال! تم تسجيل الدخول كـ ${client.user.tag}`);
   registerCommands();
   startAutoGames();
+  startAutoMemes();
 });
 
 // ============== معالجة الأوامر والأزرار ==============
@@ -334,6 +336,38 @@ async function launchAutoGame() {
   } catch (err) {
     console.error("❌ خطأ بإطلاق اللعبة التلقائية:", err);
   }
+}
+
+// ============== أوتو-بوست ميمات ==============
+const { fetchMeme, CAPTIONS } = require("./commands/meme");
+const { EmbedBuilder: EmbedBuilderMeme } = require("discord.js");
+const { RED: RED_MEME } = require("./gameLauncher");
+
+function startAutoMemes() {
+  if (!MEME_CHANNEL_ID) {
+    console.log("⚠️ MEME_CHANNEL_ID غير محدد، أوتو-ميم متوقف.");
+    return;
+  }
+  console.log("🎭 أوتو-بوست ميمات فعّال كل ساعة.");
+  setInterval(async () => {
+    try {
+      const channel = await client.channels.fetch(MEME_CHANNEL_ID);
+      if (!channel) return;
+      const meme = await fetchMeme();
+      if (!meme) return;
+      const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
+      const embed = new EmbedBuilderMeme()
+        .setColor(RED_MEME)
+        .setTitle(meme.title.slice(0, 200))
+        .setURL(meme.permalink)
+        .setDescription(`${caption}\n\n📊 **${meme.score.toLocaleString()}** upvotes • r/${meme.subreddit}`)
+        .setImage(meme.url)
+        .setFooter({ text: `✨ Sparxie Bot • u/${meme.author}` });
+      await channel.send({ embeds: [embed] });
+    } catch (err) {
+      console.error("❌ خطأ أوتو-ميم:", err);
+    }
+  }, 60 * 60 * 1000);
 }
 
 client.login(process.env.DISCORD_TOKEN);
