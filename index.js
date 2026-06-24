@@ -20,6 +20,7 @@ const { addPoints } = require("./scoresManager");
 const { normalizeArabic } = require("./utils");
 const {
   launchRandomOpenGame,
+  continueGame,
   controlButtons,
   buildEmbed,
   sendChallengeRound,
@@ -28,6 +29,16 @@ const {
 const { AUTO_GAME_CHANNEL_ID, MEME_CHANNEL_ID } = require("./config");
 const { startDailyScheduler, handleDailyVote } = require("./dailyManager");
 const { handlePrefixMessage } = require("./prefixRouter");
+
+// تكمل نفس نوع اللعبة بعد انتهاء الجولة، إلا لو كانت القناة هي قناة الألعاب
+// التلقائية بالساعة (AUTO_GAME_CHANNEL_ID) — فهذي تستمر عشوائية كالمعتاد.
+// مهلة الخمول (5 دقائق) مفعّلة تلقائياً من جوّا launchOpenGame/launchRandomOpenGame.
+async function continueAfterRound(channel, mode) {
+  if (channel.id === AUTO_GAME_CHANNEL_ID) {
+    return launchRandomOpenGame(channel);
+  }
+  return continueGame(channel, mode);
+}
 
 // ============== إعدادات ==============
 const AUTO_GAME_INTERVAL_MS = 60 * 60 * 1000; // كل ساعة
@@ -180,10 +191,8 @@ async function handleChoiceButton(interaction) {
     });
   }
 
-  setTimeout(() => launchRandomOpenGame(interaction.channel), 3000);
+  setTimeout(() => continueAfterRound(interaction.channel, game.mode), 3000);
 }
-
-// ====== معالجة إجابة اختيار بالتحدي (أول صحيح + تأخير 3 ثواني + كشف ======
 async function handleChallengeChoiceAnswer(interaction, challenge, choiceIdx) {
   if (!challenge.players.includes(interaction.user.id)) {
     // أي شخص بالقناة يقدر يشارك بالإجابة، لكن لازم يكون عضو حقيقي (تحقق بسيط)
@@ -280,7 +289,7 @@ async function handleYesNo(interaction) {
     });
   }
 
-  setTimeout(() => launchRandomOpenGame(interaction.channel), 3000);
+  setTimeout(() => continueAfterRound(interaction.channel, game.mode), 3000);
 }
 
 // ====== معالجة تصويت تفضيل كذا أو كذا ======
@@ -351,7 +360,7 @@ async function handleSkipStop(interaction) {
       embeds: [],
       components: [],
     });
-    setTimeout(() => launchRandomOpenGame(interaction.channel), 2000);
+    setTimeout(() => continueAfterRound(interaction.channel, game.mode), 2000);
   }
 }
 
@@ -364,8 +373,9 @@ client.on("messageCreate", async (message) => {
   if (handled) return;
 
   // ====== معالجة تحدي "رتب الكلمة" (إجابة نصية) ======
+  // نتحقق من نمط الجولة الفعلي (currentRoundMode) عشان وضع "عشوائي" يدعم جولات رتب الكلمة كذلك
   const challenge = getActiveChallenge(message.channelId);
-  if (challenge && challenge.mode === "scramble" && challenge.currentRound && !challenge.answeredBy) {
+  if (challenge && challenge.currentRoundMode === "scramble" && challenge.currentRound && !challenge.answeredBy) {
     const guess = message.content.trim();
     const correctAnswer = challenge.currentRound.answer;
 
@@ -398,7 +408,7 @@ client.on("messageCreate", async (message) => {
       clearActiveGame(message.channelId);
       addPoints(message.author.id, message.author.username, activeGame.points);
       await message.reply(`🎉 **${message.author.username}** رتّب الكلمة! الإجابة: **${activeGame.answer}** — **+${activeGame.points} نقاط** 🏆`);
-      setTimeout(() => launchRandomOpenGame(message.channel), 3000);
+      setTimeout(() => continueAfterRound(message.channel, activeGame.mode), 3000);
     }
   }
 });
