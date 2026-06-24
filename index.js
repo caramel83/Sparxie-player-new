@@ -5,25 +5,32 @@ const {
   Collection,
   REST,
   Routes,
+  EmbedBuilder,
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-const { getActiveGame, clearActiveGame } = require("./gameManager");
+const {
+  getActiveGame,
+  clearActiveGame,
+  getActiveChallenge,
+  clearActiveChallenge,
+} = require("./gameManager");
 const { addPoints } = require("./scoresManager");
 const { normalizeArabic } = require("./utils");
 const {
-  launchRandom,
-  launchHSRGuess,
-  launchScramble,
-  launchGuess,
+  launchRandomOpenGame,
+  controlButtons,
+  buildEmbed,
+  sendChallengeRound,
   RED,
-} = require("./gameLauncher");
+} = require("./gameEngine");
+const { AUTO_GAME_CHANNEL_ID, MEME_CHANNEL_ID } = require("./config");
+const { startDailyScheduler, handleDailyVote } = require("./dailyManager");
+const { handlePrefixMessage } = require("./prefixRouter");
 
 // ============== إعدادات ==============
 const AUTO_GAME_INTERVAL_MS = 60 * 60 * 1000; // كل ساعة
-const AUTO_GAME_CHANNEL_ID = process.env.AUTO_GAME_CHANNEL_ID;
-const MEME_CHANNEL_ID = process.env.MEME_CHANNEL_ID;
 // =====================================
 
 const client = new Client({
@@ -38,7 +45,7 @@ client.commands = new Collection();
 
 // تحميل الأوامر
 const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
+const commandFiles = fs.readdirSync(commandsPath).filter((f) => f.endsWith(".js"));
 const commandsForRegister = [];
 
 for (const file of commandFiles) {
@@ -50,8 +57,6 @@ for (const file of commandFiles) {
 }
 
 const xoCommand = require("./commands/xo");
-const battleCommand = require("./commands/battle");
-const { sendBattleQuestion } = require("./commands/battle");
 
 // ============== تسجيل الأوامر ==============
 async function registerCommands() {
@@ -72,6 +77,7 @@ client.once("ready", () => {
   registerCommands();
   startAutoGames();
   startAutoMemes();
+  startDailyScheduler(client);
 });
 
 // ============== معالجة الأوامر والأزرار ==============
@@ -95,35 +101,160 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   const id = interaction.customId;
 
+  // ====== أزرار السؤال اليومي ======
+  if (id.startsWith("daily_")) {
+    await handleDailyVote(interaction);
+    return;
+  }
+
   // ====== أزرار XO ======
   if (id.startsWith("xo_")) {
     await handleXoButton(interaction);
     return;
   }
 
-  // ====== أزرار البتل ======
+  // ====== أزرار قبول/رفض التحدي (قديمة - متبقاة للتوافق، لو موجودة) ======
   if (id.startsWith("battle_accept_") || id.startsWith("battle_reject_")) {
-    await handleBattleAccept(interaction);
+    return interaction.reply({ content: "⚠️ هذا النوع من التحديات ابتدا فوراً بدون قبول/رفض الآن.", flags: 64 });
+  }
+
+  // ====== أزرار اختيار من متعدد (choice_) ======
+  if (id.startsWith("choice_")) {
+    await handleChoiceButton(interaction);
     return;
   }
 
-  // ====== تخطي / إيقاف الألعاب ======
-  if (id.startsWith("skip_") || id.startsWith("stop_")) {
-    await handleSkipStop(interaction);
-    return;
-  }
-
-  // ====== أزرار نعم/لا للـ guess_yesno ======
+  // ====== أزرار نعم/لا (ans_yes_/ans_no_) ======
   if (id.startsWith("ans_yes_") || id.startsWith("ans_no_")) {
     await handleYesNo(interaction);
     return;
   }
+
+  // ====== أزرار تفضيل كذا أو كذا (wyr_) ======
+  if (id.startsWith("wyr_1_") || id.startsWith("wyr_2_")) {
+    await handleWyrVote(interaction);
+    return;
+  }
+
+  // ====== تخطي / إيقاف الألعاب (مفتوحة أو تحدي) ======
+  if (id.startsWith("skip_") || id.startsWith("stop_")) {
+    await handleSkipStop(interaction);
+    return;
+  }
 });
 
-// ====== معالجة نعم/لا ======
+// ====== معالجة اختيار من متعدد (للعبة المفتوحة أو التحدي) ======
+async function handleChoiceButton(interaction) {
+  const parts = interaction.customId.split("_");
+  const gameId = parts[1];
+  const choiceIdx = parseInt(parts[2], 10);
+
+  // أولاً: هل هذا تحدي نشط؟
+  const challenge = getActiveChallenge(interaction.channelId);
+  if (challenge && challenge.challengeId === gameId && challenge.currentRound) {
+    return handleChallengeChoiceAnswer(interaction, challenge, choiceIdx);
+  }
+
+  // وإلا: لعبة مفتوحة عادية
+  const game = getActiveGame(interaction.channelId);
+  if (!game || game.gameId !== gameId || game.inputType !== "choice") {
+    return interaction.reply({ content: "⚠️ هذه اللعبة انتهت أو غير نشطة.", flags: 64 });
+  }
+
+  const chosen = game.choices[choiceIdx];
+  const correct = chosen === game.answer;
+  clearActiveGame(interaction.channelId);
+
+  if (correct) {
+    addPoints(interaction.user.id, interaction.user.username, game.points);
+    await interaction.update({
+      content: `✅ **${interaction.user.username}** أجاب صح! **+${game.points} نقطة** 🎉\nالإجابة: **${game.answer}**`,
+      embeds: [],
+      components: [],
+    });
+  } else {
+    await interaction.update({
+      content: `❌ إجابة خاطئة! اختار **${interaction.user.username}**: ${chosen}\nالصحيح كان: **${game.answer}**`,
+      embeds: [],
+      components: [],
+    });
+  }
+
+  setTimeout(() => launchRandomOpenGame(interaction.channel), 3000);
+}
+
+// ====== معالجة إجابة اختيار بالتحدي (أول صحيح + تأخير 3 ثواني + كشف ======
+async function handleChallengeChoiceAnswer(interaction, challenge, choiceIdx) {
+  if (!challenge.players.includes(interaction.user.id)) {
+    // أي شخص بالقناة يقدر يشارك بالإجابة، لكن لازم يكون عضو حقيقي (تحقق بسيط)
+  }
+
+  const round = challenge.currentRound;
+  const chosen = round.choices[choiceIdx];
+  const correct = chosen === round.answer;
+
+  if (!correct) {
+    return interaction.reply({ content: "❌ إجابة خاطئة! جرب مرة ثانية بالوقت المتبقي~", flags: 64 });
+  }
+
+  // أول إجابة صحيحة فقط تُحسب لهذي الجولة
+  if (challenge.answeredBy) {
+    return interaction.reply({ content: "⚠️ هذا السؤال انتهى بالفعل! انتظر الجولة الجاية~", flags: 64 });
+  }
+
+  challenge.answeredBy = interaction.user.id;
+  challenge.answeredByName = interaction.user.username;
+
+  await interaction.reply({ content: "✅ إجابة صحيحة! بانتظار كشف النتيجة بعد 3 ثواني~", flags: 64 });
+
+  // نقاط اللعبة العادية تُحسب لأي شخص شارك وأجاب صح (مو بس اللاعبين الأساسيين)
+  addPoints(interaction.user.id, interaction.user.username, round.points || 15);
+
+  // فقط لو المجاوب أحد اللاعبين الأساسيين، تُحسب له نقطة بالتحدي (score)
+  if (challenge.players.includes(interaction.user.id)) {
+    challenge.scores[interaction.user.id]++;
+  }
+
+  setTimeout(async () => {
+    await revealChallengeRound(interaction.channel, challenge);
+  }, 3000);
+}
+
+async function revealChallengeRound(channel, challenge) {
+  const round = challenge.currentRound;
+  challenge.round++;
+
+  const winnerText = challenge.answeredBy
+    ? `✅ **${challenge.answeredByName}** أجاب صح أولاً! الإجابة: **${round.answer}**`
+    : `⏱️ انتهى الوقت! الإجابة كانت: **${round.answer}**`;
+
+  await channel.send(winnerText);
+
+  if (challenge.round >= challenge.totalRounds) {
+    const [p1, p2] = challenge.players;
+    const s1 = challenge.scores[p1];
+    const s2 = challenge.scores[p2];
+    let resultMsg;
+    if (s1 > s2) {
+      addPoints(p1, challenge.usernames[p1], 20);
+      resultMsg = `🏆 فاز **${challenge.usernames[p1]}** بالتحدي! ${s1}-${s2} — **+20 نقطة** 🎉`;
+    } else if (s2 > s1) {
+      addPoints(p2, challenge.usernames[p2], 20);
+      resultMsg = `🏆 فاز **${challenge.usernames[p2]}** بالتحدي! ${s2}-${s1} — **+20 نقطة** 🎉`;
+    } else {
+      resultMsg = `🤝 تعادل بالتحدي! ${s1}-${s2}`;
+    }
+    clearActiveChallenge(channel.id);
+    await channel.send(resultMsg);
+  } else {
+    setTimeout(() => sendChallengeRound(channel, challenge), 2000);
+  }
+}
+
+// ====== معالجة نعم/لا (لعبة مفتوحة فقط) ======
 async function handleYesNo(interaction) {
   const game = getActiveGame(interaction.channelId);
-  if (!game || game.type !== "guess_yesno") {
+  if (!game || game.inputType !== "yesno") {
     return interaction.reply({ content: "⚠️ ما فيه لعبة نشطة!", flags: 64 });
   }
 
@@ -135,9 +266,9 @@ async function handleYesNo(interaction) {
   clearActiveGame(interaction.channelId);
 
   if (correct) {
-    addPoints(interaction.user.id, interaction.user.username, 5);
+    addPoints(interaction.user.id, interaction.user.username, game.points);
     await interaction.update({
-      content: `✅ **${interaction.user.username}** أجاب صح! **+5 نقاط** 🎉\nالإجابة: **${game.answer === "yes" ? "نعم" : "لا"}**`,
+      content: `✅ **${interaction.user.username}** أجاب صح! **+${game.points} نقاط** 🎉\nالإجابة: **${game.answer === "yes" ? "نعم" : "لا"}**`,
       embeds: [],
       components: [],
     });
@@ -149,130 +280,125 @@ async function handleYesNo(interaction) {
     });
   }
 
-  // تشغيل اللعبة التالية تلقائياً بعد 3 ثواني
-  setTimeout(() => launchRandom(interaction.channel), 3000);
+  setTimeout(() => launchRandomOpenGame(interaction.channel), 3000);
 }
 
-// ====== معالجة التخطي والإيقاف ======
-async function handleSkipStop(interaction) {
+// ====== معالجة تصويت تفضيل كذا أو كذا ======
+async function handleWyrVote(interaction) {
   const game = getActiveGame(interaction.channelId);
-  const isStop = interaction.customId.startsWith("stop_");
+  if (!game || game.inputType !== "wyr") {
+    return interaction.reply({ content: "⚠️ ما فيه تصويت نشط!", flags: 64 });
+  }
 
+  const choiceNum = interaction.customId.startsWith("wyr_1_") ? 1 : 2;
+  const gameId = interaction.customId.split("_").pop();
+  if (game.gameId !== gameId) return interaction.reply({ content: "⚠️ هذا التصويت انتهى.", flags: 64 });
+
+  if (game.wyrVoted.has(interaction.user.id)) {
+    return interaction.reply({ content: "صوّتت بالفعل! 😄", flags: 64 });
+  }
+
+  game.wyrVoted.add(interaction.user.id);
+  game.wyrVotes[choiceNum]++;
+  await interaction.reply({
+    content: `اخترت **${choiceNum === 1 ? game.wyrOptions[0] : game.wyrOptions[1]}**! ✅`,
+    flags: 64,
+  });
+}
+
+// ====== معالجة التخطي والإيقاف (لعبة مفتوحة أو تحدي) ======
+async function handleSkipStop(interaction) {
+  const isStop = interaction.customId.startsWith("stop_");
+  const gameId = interaction.customId.split("_").pop();
+
+  // تحدي نشط؟
+  const challenge = getActiveChallenge(interaction.channelId);
+  if (challenge && challenge.challengeId === gameId) {
+    clearActiveChallenge(interaction.channelId);
+    if (isStop) {
+      await interaction.update({ content: `⏹️ **${interaction.user.username}** أوقف التحدي.`, embeds: [], components: [] });
+    } else {
+      await interaction.update({ content: `⏭️ **${interaction.user.username}** تخطى! تم إيقاف التحدي.`, embeds: [], components: [] });
+    }
+    return;
+  }
+
+  // لعبة مفتوحة عادية
+  const game = getActiveGame(interaction.channelId);
   if (!game) {
     return interaction.reply({ content: "⚠️ ما فيه لعبة نشطة!", flags: 64 });
   }
 
   clearActiveGame(interaction.channelId);
 
+  const answerText = game.answer
+    ? typeof game.answer === "string" && game.answer === "yes"
+      ? "نعم"
+      : game.answer === "no"
+      ? "لا"
+      : game.answer
+    : "—";
+
   if (isStop) {
     await interaction.update({
-      content: `⏹️ **${interaction.user.username}** أوقف اللعبة.\nالإجابة كانت: **${game.answer || "—"}**`,
+      content: `⏹️ **${interaction.user.username}** أوقف اللعبة.\nالإجابة كانت: **${answerText}**`,
       embeds: [],
       components: [],
     });
   } else {
     await interaction.update({
-      content: `⏭️ **${interaction.user.username}** تخطى! الإجابة كانت: **${game.answer || "—"}**`,
+      content: `⏭️ **${interaction.user.username}** تخطى! الإجابة كانت: **${answerText}**`,
       embeds: [],
       components: [],
     });
-    // ابدأ لعبة جديدة فوراً
-    setTimeout(() => launchRandom(interaction.channel), 2000);
+    setTimeout(() => launchRandomOpenGame(interaction.channel), 2000);
   }
 }
 
-// ====== معالجة قبول/رفض البتل ======
-async function handleBattleAccept(interaction) {
-  const parts = interaction.customId.split("_");
-  const action = parts[1]; // accept أو reject
-  const battleId = parts[2];
-  const battle = battleCommand.battles.get(battleId);
-
-  if (!battle) {
-    return interaction.reply({ content: "⚠️ هذا التحدي انتهى.", flags: 64 });
-  }
-
-  if (interaction.user.id !== battle.players[1]) {
-    return interaction.reply({ content: "⚠️ هذا التحدي مش لك!", flags: 64 });
-  }
-
-  if (action === "reject") {
-    battleCommand.battles.delete(battleId);
-    await interaction.update({ content: `❌ **${interaction.user.username}** رفض التحدي.`, embeds: [], components: [] });
-    return;
-  }
-
-  // قبول — ابدأ اللعبة
-  await interaction.update({ content: "⚔️ بدأ التحدي! استعدوا...", embeds: [], components: [] });
-  battle.round = 0;
-  setTimeout(() => sendBattleQuestion(interaction.channel, battleId, battle), 1500);
-}
-
-// ====== معالجة رسائل الشات (تخمين + رتب كلمة + بتل) ======
+// ====== معالجة رسائل الشات (تخمين نصي + رتب كلمة + تحدي scramble + بريفكس عربي) ======
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  // ====== معالجة البتل ======
-  for (const [battleId, battle] of battleCommand.battles) {
-    if (!battle.active || !battle.currentQuestion) continue;
+  // ====== أوامر البريفكس العربي (!) ======
+  const handled = await handlePrefixMessage(message, client);
+  if (handled) return;
 
-    const playerIds = battle.players;
-    if (!playerIds.includes(message.author.id)) continue;
-    if (battle.answered?.has(message.author.id)) continue;
+  // ====== معالجة تحدي "رتب الكلمة" (إجابة نصية) ======
+  const challenge = getActiveChallenge(message.channelId);
+  if (challenge && challenge.mode === "scramble" && challenge.currentRound && !challenge.answeredBy) {
+    const guess = message.content.trim();
+    const correctAnswer = challenge.currentRound.answer;
 
-    const guess = message.content.trim().toLowerCase();
-    const correct = battle.currentQuestion.answer.toLowerCase();
+    if (normalizeArabic(guess) === normalizeArabic(correctAnswer)) {
+      challenge.answeredBy = message.author.id;
+      challenge.answeredByName = message.author.username;
 
-    if (guess === correct || normalizeArabic(guess) === normalizeArabic(correct)) {
-      battle.answered.add(message.author.id);
-      battle.scores[message.author.id]++;
-      battle.round++;
-
-      await message.reply(`✅ **${message.author.username}** أجاب صح! الإجابة: **${battle.currentQuestion.answer}**`);
-
-      if (battle.round >= battle.maxRounds) {
-        // نهاية المباراة
-        const [p1, p2] = battle.players;
-        const s1 = battle.scores[p1];
-        const s2 = battle.scores[p2];
-        let resultMsg;
-        if (s1 > s2) {
-          addPoints(p1, battle.usernames[p1], 20);
-          resultMsg = `🏆 فاز **${battle.usernames[p1]}** ${s1}-${s2}! **+20 نقطة**`;
-        } else if (s2 > s1) {
-          addPoints(p2, battle.usernames[p2], 20);
-          resultMsg = `🏆 فاز **${battle.usernames[p2]}** ${s2}-${s1}! **+20 نقطة**`;
-        } else {
-          resultMsg = `🤝 تعادل! ${s1}-${s2}`;
-        }
-        battleCommand.battles.delete(battleId);
-        await message.channel.send(resultMsg);
-      } else {
-        setTimeout(() => sendBattleQuestion(message.channel, battleId, battle), 2000);
+      addPoints(message.author.id, message.author.username, challenge.currentRound.points || 10);
+      if (challenge.players.includes(message.author.id)) {
+        challenge.scores[message.author.id]++;
       }
+
+      await message.reply(`✅ إجابة صحيحة! بانتظار كشف النتيجة بعد 3 ثواني~`);
+
+      setTimeout(async () => {
+        await revealChallengeRound(message.channel, challenge);
+      }, 3000);
       return;
     }
   }
 
-  // ====== معالجة الألعاب العادية ======
+  // ====== معالجة الألعاب المفتوحة العادية (رتب الكلمة بدون تحدي) ======
   const activeGame = getActiveGame(message.channelId);
-  if (!activeGame) return;
+  if (!activeGame || activeGame.inputType !== "text") return;
 
   const guess = message.content.trim();
 
-  if (activeGame.type === "hsr_guess") {
+  if (activeGame.mode === "scramble") {
     if (normalizeArabic(guess) === normalizeArabic(activeGame.answer)) {
       clearActiveGame(message.channelId);
-      addPoints(message.author.id, message.author.username, 15);
-      await message.reply(`🎉 **${message.author.username}** أجاب صح! الإجابة: **${activeGame.answer}** — **+15 نقطة** 🏆`);
-      setTimeout(() => launchRandom(message.channel), 3000);
-    }
-  } else if (activeGame.type === "scramble") {
-    if (normalizeArabic(guess) === normalizeArabic(activeGame.answer)) {
-      clearActiveGame(message.channelId);
-      addPoints(message.author.id, message.author.username, 10);
-      await message.reply(`🎉 **${message.author.username}** رتّب الكلمة! الإجابة: **${activeGame.answer}** — **+10 نقاط** 🏆`);
-      setTimeout(() => launchRandom(message.channel), 3000);
+      addPoints(message.author.id, message.author.username, activeGame.points);
+      await message.reply(`🎉 **${message.author.username}** رتّب الكلمة! الإجابة: **${activeGame.answer}** — **+${activeGame.points} نقاط** 🏆`);
+      setTimeout(() => launchRandomOpenGame(message.channel), 3000);
     }
   }
 });
@@ -282,7 +408,6 @@ async function handleXoButton(interaction) {
   const [, gameId, idxStr] = interaction.customId.split("_");
   const idx = parseInt(idxStr, 10);
   const game = xoCommand.xoGames.get(gameId);
-  const { EmbedBuilder } = require("discord.js");
 
   if (!game) {
     return interaction.reply({ content: "⚠️ هذي اللعبة خلصت.", flags: 64 });
@@ -332,7 +457,7 @@ async function launchAutoGame() {
       console.log("⏭️ تجاوز اللعبة التلقائية — فيه لعبة شغالة.");
       return;
     }
-    await launchRandom(channel);
+    await launchRandomOpenGame(channel);
   } catch (err) {
     console.error("❌ خطأ بإطلاق اللعبة التلقائية:", err);
   }
@@ -340,8 +465,6 @@ async function launchAutoGame() {
 
 // ============== أوتو-بوست ميمات ==============
 const { fetchMeme, CAPTIONS } = require("./commands/meme");
-const { EmbedBuilder: EmbedBuilderMeme } = require("discord.js");
-const { RED: RED_MEME } = require("./gameLauncher");
 
 function startAutoMemes() {
   if (!MEME_CHANNEL_ID) {
@@ -353,16 +476,14 @@ function startAutoMemes() {
     try {
       const channel = await client.channels.fetch(MEME_CHANNEL_ID);
       if (!channel) return;
-      const meme = await fetchMeme();
-      if (!meme) return;
+      const url = await fetchMeme();
+      if (!url) return;
       const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
-      const embed = new EmbedBuilderMeme()
-        .setColor(RED_MEME)
-        .setTitle(meme.title.slice(0, 200))
-        .setURL(meme.permalink)
-        .setDescription(`${caption}\n\n📊 **${meme.score.toLocaleString()}** upvotes • r/${meme.subreddit}`)
-        .setImage(meme.url)
-        .setFooter({ text: `✨ Sparxie Bot • u/${meme.author}` });
+      const embed = new EmbedBuilder()
+        .setColor(RED)
+        .setDescription(caption)
+        .setImage(url)
+        .setFooter({ text: "✨ Sparxie Bot • Honkai: Star Rail" });
       await channel.send({ embeds: [embed] });
     } catch (err) {
       console.error("❌ خطأ أوتو-ميم:", err);
