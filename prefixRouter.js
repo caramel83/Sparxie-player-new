@@ -11,13 +11,15 @@ const { launchOpenGame, startChallenge, sendChallengeRound } = require("./gameEn
 const { getActiveChallenge } = require("./gameManager");
 
 // كل بريفكس مرتبط بنمط لعبة من gameEngine (الألعاب الجماعية/التحدي)
+// كل نمط يكرر نفسه بجولاته التالية (بدون تبديل عشوائي) إلا "بتل/عشوائي" المخصص للخلط
 const GAME_PREFIX_MODES = {
   "رتب": "scramble",
   "خمن": "guess_btn",
   "ثقافي": "trivia",
   "صراحة": "truth",
   "تفضل": "wyr",
-  "بتل": "quiz_battle", // alias لـ battle
+  "بتل": "random_mix", // وضع عشوائي يخلط بين كل الألعاب — يطابق /battle
+  "عشوائي": "random_mix",
 };
 
 // أوامر السلاش العادية (بدون نمط لعبة) المرتبطة بـ command name لاستدعائها مباشرة
