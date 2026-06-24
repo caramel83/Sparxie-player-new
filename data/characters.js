@@ -41,9 +41,9 @@ const CHARACTERS = [
   { name: "Jiaoqiu", rarity: 5, element: "Fire", path: "Nihility" },
   { name: "Feixiao", rarity: 5, element: "Wind", path: "Hunt" },
   { name: "Lingsha", rarity: 5, element: "Fire", path: "Abundance" },
-  { name: "Rappa", rarity: 5, element: "Imaginary", path: "Destruction" },
+  { name: "Rappa", rarity: 5, element: "Imaginary", path: "Erudition" },
   { name: "Sunday", rarity: 5, element: "Imaginary", path: "Harmony" },
-  { name: "Fugue", rarity: 5, element: "Fire", path: "Destruction" },
+  { name: "Fugue", rarity: 5, element: "Fire", path: "Nihility" },
 
   // ===== الإصدار 3.x =====
   { name: "Aglaea", rarity: 5, element: "Lightning", path: "Remembrance" },
@@ -52,15 +52,15 @@ const CHARACTERS = [
   { name: "Mydei", rarity: 5, element: "Imaginary", path: "Destruction" },
   { name: "Castorice", rarity: 5, element: "Quantum", path: "Remembrance" },
   { name: "Anaxa", rarity: 5, element: "Wind", path: "Erudition" },
-  { name: "Hyacine", rarity: 5, element: "Wind", path: "Abundance" },
+  { name: "Hyacine", rarity: 5, element: "Wind", path: "Remembrance" },
   { name: "Cipher", rarity: 5, element: "Quantum", path: "Nihility" },
   { name: "Phainon", rarity: 5, element: "Physical", path: "Destruction" },
   { name: "Saber", rarity: 5, element: "Wind", path: "Destruction" },
   { name: "Archer", rarity: 5, element: "Quantum", path: "Hunt" },
   { name: "Hysilens", rarity: 5, element: "Physical", path: "Nihility" },
-  { name: "Cerydra", rarity: 5, element: "Wind", path: "Remembrance" },
-  { name: "Evernight", rarity: 5, element: "Ice", path: "Nihility" },
-  { name: "Cyrene", rarity: 5, element: "Ice", path: "Abundance" },
+  { name: "Cerydra", rarity: 5, element: "Wind", path: "Harmony" },
+  { name: "Evernight", rarity: 5, element: "Ice", path: "Remembrance" },
+  { name: "Cyrene", rarity: 5, element: "Ice", path: "Remembrance" },
 
   // ===== الإصدار 4.x =====
   { name: "Ashveil", rarity: 5, element: "Lightning", path: "Hunt" },
