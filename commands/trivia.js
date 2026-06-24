@@ -1,38 +1,48 @@
 // commands/trivia.js
-const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
-const { RED } = require("../gameLauncher");
-
-const questions = [
-  { q: "ما عاصمة اليابان؟", a: "طوكيو", choices: ["طوكيو", "أوساكا", "كيوتو", "ناغويا"] },
-  { q: "كم عدد لاعبي كرة القدم لكل فريق؟", a: "11", choices: ["9", "10", "11", "12"] },
-  { q: "من هو مخترع الهاتف؟", a: "غراهام بيل", choices: ["أديسون", "غراهام بيل", "تيسلا", "نيوتن"] },
-  { q: "ما أكبر كوكب في المجموعة الشمسية؟", a: "المشتري", choices: ["زحل", "المشتري", "أورانوس", "نبتون"] },
-  { q: "Sparxie تتبع أي Path في HSR؟", a: "Elation", choices: ["Harmony", "Elation", "Nihility", "Hunt"] },
-  { q: "ما عنصر Sparxie في HSR؟", a: "Fire", choices: ["Ice", "Wind", "Fire", "Lightning"] },
-];
+const { SlashCommandBuilder } = require("discord.js");
+const { launchOpenGame, startChallenge, sendChallengeRound } = require("../gameEngine");
+const { getActiveChallenge } = require("../gameManager");
 
 module.exports = {
-  data: new SlashCommandBuilder().setName("trivia").setDescription("سؤال ثقافي LIVE من Sparxie! 🧠"),
+  data: new SlashCommandBuilder()
+    .setName("trivia")
+    .setDescription("سؤال ثقافي من Sparxie! 🧠")
+    .addUserOption((opt) =>
+      opt.setName("الخصم").setDescription("تحدي شخص محدد (اختياري)").setRequired(false)
+    )
+    .addIntegerOption((opt) =>
+      opt.setName("جولات").setDescription("عدد الجولات بالتحدي (افتراضي 5)").setRequired(false).setMinValue(1).setMaxValue(20)
+    ),
+
   async execute(interaction) {
-    const q = questions[Math.floor(Math.random() * questions.length)];
-    const shuffled = [...q.choices].sort(() => Math.random() - 0.5);
-    const row = new ActionRowBuilder().addComponents(
-      shuffled.map(c => new ButtonBuilder().setCustomId(`trivia_${c}_${q.a}`).setLabel(c).setStyle(ButtonStyle.Primary))
+    const opponent = interaction.options.getUser("الخصم");
+    const rounds = interaction.options.getInteger("جولات");
+
+    if (!opponent) {
+      await interaction.reply({ content: "🧠 ابدأت سؤال ثقافي بالقناة!", ephemeral: true });
+      await launchOpenGame(interaction.channel, "trivia");
+      return;
+    }
+
+    if (opponent.bot || opponent.id === interaction.user.id) {
+      return interaction.reply({ content: "⚠️ اختار شخص ثاني صح!", ephemeral: true });
+    }
+    if (getActiveChallenge(interaction.channelId)) {
+      return interaction.reply({ content: "⚠️ فيه تحدي شغّال بهذي القناة بالفعل!", ephemeral: true });
+    }
+
+    const challenge = startChallenge(interaction.channel, {
+      challengerId: interaction.user.id,
+      challengerName: interaction.user.username,
+      opponentId: opponent.id,
+      opponentName: opponent.username,
+      mode: "quiz_battle",
+      rounds,
+    });
+
+    await interaction.reply(
+      `⚔️ <@${interaction.user.id}> يتحدى <@${opponent.id}> بسؤال ثقافي! والقناة كلها تقدر تشارك~`
     );
-    const msg = await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(RED).setTitle("🧠 LIVE TRIVIA!").setDescription(`**${q.q}**`).setFooter({ text: "عندك 15 ثانية! ✨ Sparxie Bot" })],
-      components: [row], fetchReply: true
-    });
-    const collector = msg.createMessageComponentCollector({ time: 15000 });
-    collector.on("collect", async i => {
-      const [, chosen, correct] = i.customId.split("_");
-      const win = chosen === correct;
-      await i.update({
-        embeds: [new EmbedBuilder().setColor(win ? 0x00FF88 : RED).setTitle(win ? "✅ CORRECT! CLIP THAT!" : "❌ WRONG! L في الـ chat!").setDescription(`**${q.q}**\n\nالجواب: **${correct}**\n\n${win ? "Sparxie فخورة~ ✨" : "Sparxie محبطة منك 💀"}`).setFooter({ text: `${i.user.username} جاوب • ✨ Sparxie Bot` })],
-        components: []
-      });
-      collector.stop();
-    });
-    collector.on("end", async (_, r) => { if (r === "time") await interaction.editReply({ components: [] }).catch(() => {}); });
+    setTimeout(() => sendChallengeRound(interaction.channel, challenge), 1500);
   },
 };
