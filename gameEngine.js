@@ -21,6 +21,8 @@ const {
 } = require("discord.js");
 const {
   setActiveGame,
+  getActiveGame,
+  clearActiveGame,
   setActiveChallenge,
 } = require("./gameManager");
 const SCRAMBLE_WORDS = require("./data/scramble_words");
@@ -36,6 +38,9 @@ const { shuffleWord, randomFrom } = require("./utils");
 
 const RED = 0xe03131;
 const DEFAULT_ROUNDS = 5;
+
+// الأنماط اللي تُخلط عشوائياً بوضع "عشوائي" (/battle و !بتل/!عشوائي)
+const RANDOM_MIX_POOL = ["scramble", "hsr_guess", "guess_btn", "trivia", "quiz_battle"];
 
 function generateGameId() {
   return Math.random().toString(36).substring(2, 8);
@@ -197,18 +202,30 @@ function buildRoundContent(mode) {
         points: 0,
       };
     }
+    case "random_mix": {
+      // وضع "عشوائي" (battle المدمج) — يختار نمط عشوائي من بين الأنماط القابلة للخلط
+      // ثم يبني محتوى الجولة بنفس شكل ذاك النمط، لكن نُبقي mode الأصل "random_mix"
+      // بالحالة المخزنة بالقناة (يُدار من launchOpenGame/continueGame)
+      const pickedMode = randomFrom(RANDOM_MIX_POOL);
+      const inner = buildRoundContent(pickedMode);
+      return { ...inner, actualMode: pickedMode };
+    }
     default:
       throw new Error(`نمط لعبة غير معروف: ${mode}`);
   }
 }
 
 // ============== إطلاق لعبة مفتوحة (جماعية) بقناة ==============
-async function launchOpenGame(channel, mode) {
+// mode: نوع اللعبة الثابت المطلوب من المستخدم (scramble/hsr_guess/guess_btn/trivia/truth/wyr/random_mix)
+// useDefaultTimeout: true (افتراضي) يفعّل إغلاق تلقائي بعد 5 دقائق خمول مع إعلان بالقناة.
+//                     مرّر false لو تبي تتحكم بالمؤقت يدوياً من الخارج (نادراً).
+async function launchOpenGame(channel, mode, useDefaultTimeout = true) {
   const gameId = generateGameId();
   const content = buildRoundContent(mode);
 
-  setActiveGame(channel.id, {
-    mode,
+  const gameData = {
+    mode, // النمط "الثابت" اللي طلبه المستخدم (للاستمرارية بنفس النوع)
+    actualMode: content.actualMode || mode, // النمط الفعلي لهذي الجولة بالتحديد
     gameId,
     answer: content.answer,
     choices: content.choices || null,
@@ -218,7 +235,17 @@ async function launchOpenGame(channel, mode) {
     wyrVotes: content.inputType === "wyr" ? { 1: 0, 2: 0 } : null,
     wyrVoted: content.inputType === "wyr" ? new Set() : null,
     inputType: content.inputType,
-  });
+  };
+
+  const onTimeout = useDefaultTimeout
+    ? (gd) => announceIdleTimeout(channel, gd)
+    : undefined;
+
+  setActiveGame(
+    channel.id,
+    gameData,
+    onTimeout ? () => onTimeout(gameData) : undefined
+  );
 
   const embed = buildEmbed(content.embedData);
   let components;
@@ -231,11 +258,29 @@ async function launchOpenGame(channel, mode) {
   return gameId;
 }
 
-// اختيار لعبة عشوائية من الأنماط القابلة للتشغيل التلقائي بالقناة
+// يبني رسالة "انتهى الوقت" الموحّدة عند انقضاء مهلة الخمول (5 دقائق بدون إجابة)
+async function announceIdleTimeout(channel, game) {
+  const answerText = !game.answer
+    ? "—"
+    : game.answer === "yes"
+    ? "نعم"
+    : game.answer === "no"
+    ? "لا"
+    : game.answer;
+  await channel.send(`⏱️ ما حد جاوب بـ 5 دقايق! اللعبة انتهت تلقائياً.\nالإجابة كانت: **${answerText}**`);
+}
+
+// يكمل اللعبة المفتوحة بنفس النوع اللي كانت شغالة (يُستخدم بعد كل جولة تنتهي بإجابة/تخطي)
+async function continueGame(channel, mode) {
+  return launchOpenGame(channel, mode, true);
+}
+
+// اختيار لعبة عشوائية من الأنماط القابلة للتشغيل — تُستخدم فقط بالبوست التلقائي بالساعة
+// (AUTO_GAME_CHANNEL_ID) وليس لمتابعة جولة لعبة يدوية بعد انتهائها
 const AUTO_MODES = ["scramble", "hsr_guess", "guess_btn", "trivia"];
 async function launchRandomOpenGame(channel) {
   const mode = randomFrom(AUTO_MODES);
-  return launchOpenGame(channel, mode);
+  return launchOpenGame(channel, mode, true);
 }
 
 // ============== التحدي (1v1 + مشاركة مفتوحة لبقية القناة) ==============
@@ -263,8 +308,17 @@ function startChallenge(channel, { challengerId, challengerName, opponentId, opp
 }
 
 async function sendChallengeRound(channel, challenge) {
-  const content = buildRoundContent(challenge.mode === "scramble" ? "scramble" : "quiz_battle");
+  // وضع "عشوائي" بالتحدي يخلط بين كل الأنماط القابلة للأزرار + رتب الكلمة
+  const roundMode =
+    challenge.mode === "scramble"
+      ? "scramble"
+      : challenge.mode === "random_mix"
+      ? randomFrom(["scramble", "guess_btn", "trivia", "quiz_battle"])
+      : "quiz_battle";
+
+  const content = buildRoundContent(roundMode);
   challenge.currentRound = content;
+  challenge.currentRoundMode = roundMode; // يفيد بمعالجة إجابة "رتب الكلمة" بالشات
   challenge.answeredBy = null;
 
   const p1 = challenge.players[0];
@@ -300,6 +354,7 @@ async function sendChallengeRound(channel, challenge) {
 module.exports = {
   RED,
   DEFAULT_ROUNDS,
+  RANDOM_MIX_POOL,
   generateGameId,
   controlButtons,
   yesNoButtons,
@@ -308,6 +363,8 @@ module.exports = {
   buildEmbed,
   buildRoundContent,
   launchOpenGame,
+  continueGame,
+  announceIdleTimeout,
   launchRandomOpenGame,
   AUTO_MODES,
   startChallenge,
