@@ -64,7 +64,7 @@ const CHARACTERS = [
 
   // ===== الإصدار 4.x =====
   { name: "Ashveil", rarity: 5, element: "Lightning", path: "Hunt" },
-  { name: "Yao Guang", rarity: 5, element: "Physical", path: "Remembrance" },
+  { name: "Yao Guang", rarity: 5, element: "Physical", path: "Elation" },
   { name: "Silver Wolf Lv.999", rarity: 5, element: "Imaginary", path: "Elation" },
   { name: "Evanescia", rarity: 5, element: "Physical", path: "Elation" },
   { name: "Mortenax Blade", rarity: 5, element: "Fire", path: "Nihility" },
