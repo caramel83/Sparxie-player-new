@@ -5,8 +5,8 @@ const { RED } = require("../gameLauncher");
 
 const SLAP_CONFIG = {
   template: path.join(__dirname, "../assets/slap_template.jpg"),
-  hitter: { x: 430, y: 140, size: 155 },
-  victim: { x: 790, y: 220, size: 145 },
+  hitter: { x: 350, y: 180, size: 200 },
+  victim: { x: 850, y: 280, size: 190 },
 };
 
 const SLAP_CAPTIONS = [
