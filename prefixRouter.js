@@ -15,6 +15,7 @@ const { getActiveChallenge } = require("./gameManager");
 const GAME_PREFIX_MODES = {
   "رتب": "scramble",
   "خمن": "guess_btn",
+  "علم": "flags",
   "ثقافي": "trivia",
   "صراحة": "truth",
   "تفضل": "wyr",
