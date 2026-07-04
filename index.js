@@ -19,30 +19,21 @@ const {
 const { addPoints } = require("./scoresManager");
 const { normalizeArabic } = require("./utils");
 const {
-  launchRandomOpenGame,
   continueGame,
   controlButtons,
   buildEmbed,
   sendChallengeRound,
   RED,
 } = require("./gameEngine");
-const { AUTO_GAME_CHANNEL_ID, MEME_CHANNEL_ID } = require("./config");
+const { MEME_CHANNEL_ID } = require("./config");
 const { startDailyScheduler, handleDailyVote } = require("./dailyManager");
 const { handlePrefixMessage } = require("./prefixRouter");
 
-// تكمل نفس نوع اللعبة بعد انتهاء الجولة، إلا لو كانت القناة هي قناة الألعاب
-// التلقائية بالساعة (AUTO_GAME_CHANNEL_ID) — فهذي تستمر عشوائية كالمعتاد.
-// مهلة الخمول (5 دقائق) مفعّلة تلقائياً من جوّا launchOpenGame/launchRandomOpenGame.
+// تكمل نفس نوع اللعبة بعد انتهاء الجولة (كل لعبة مستقلة بقناتها).
+// مهلة الخمول (5 دقائق) مفعّلة تلقائياً من جوّا launchOpenGame.
 async function continueAfterRound(channel, mode) {
-  if (channel.id === AUTO_GAME_CHANNEL_ID) {
-    return launchRandomOpenGame(channel);
-  }
   return continueGame(channel, mode);
 }
-
-// ============== إعدادات ==============
-const AUTO_GAME_INTERVAL_MS = 60 * 60 * 1000; // كل ساعة
-// =====================================
 
 const client = new Client({
   intents: [
@@ -86,7 +77,6 @@ async function registerCommands() {
 client.once("ready", () => {
   console.log(`✅ سباركسي شغّال! تم تسجيل الدخول كـ ${client.user.tag}`);
   registerCommands();
-  startAutoGames();
   startAutoMemes();
   startDailyScheduler(client);
 });
@@ -444,33 +434,6 @@ async function handleXoButton(interaction) {
   game.turn = game.turn === "X" ? "O" : "X";
   const embed = new EmbedBuilder().setColor(RED).setTitle("❌⭕ إكس أو").setDescription(`دور: <@${game.players[game.turn]}> (${game.turn})`);
   await interaction.update({ embeds: [embed], components: xoCommand.buildBoard(game.board, gameId) });
-}
-
-// ============== الألعاب التلقائية ==============
-function startAutoGames() {
-  if (!AUTO_GAME_CHANNEL_ID) {
-    console.log("⚠️ AUTO_GAME_CHANNEL_ID غير محدد، الألعاب التلقائية متوقفة.");
-    return;
-  }
-  console.log(`🎮 الألعاب التلقائية فعالة كل ${AUTO_GAME_INTERVAL_MS / 60000} دقيقة.`);
-  setTimeout(() => {
-    launchAutoGame();
-    setInterval(launchAutoGame, AUTO_GAME_INTERVAL_MS);
-  }, 60 * 1000);
-}
-
-async function launchAutoGame() {
-  try {
-    const channel = await client.channels.fetch(AUTO_GAME_CHANNEL_ID);
-    if (!channel) return;
-    if (getActiveGame(AUTO_GAME_CHANNEL_ID)) {
-      console.log("⏭️ تجاوز اللعبة التلقائية — فيه لعبة شغالة.");
-      return;
-    }
-    await launchRandomOpenGame(channel);
-  } catch (err) {
-    console.error("❌ خطأ بإطلاق اللعبة التلقائية:", err);
-  }
 }
 
 // ============== أوتو-بوست ميمات ==============
