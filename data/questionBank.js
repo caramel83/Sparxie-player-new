@@ -5,6 +5,7 @@
 // ============================================================
 
 const { CHARACTERS } = require("./characters");
+const { FLAGS } = require("./flags");
 const { randomFrom } = require("../utils");
 
 // ---------- أسئلة ثقافية متعددة الخيارات (تُستخدم بـ trivia والتحدي الجماعي) ----------
@@ -143,6 +144,24 @@ function generateCharacterFactQuestion() {
   return { character, questionText, correctAnswer, choices, qType };
 }
 
+// ---------- توليد سؤال "أعلام" متعدد الخيارات (4 أزرار) ----------
+// يعرض إيموجي علم دولة، واللاعب يختار اسم الدولة الصحيح من 4 خيارات
+function generateFlagQuestion() {
+  const country = randomFrom(FLAGS);
+  const pool = FLAGS.filter((f) => f.name !== country.name);
+
+  const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+  const distractors = shuffledPool.slice(0, 3).map((f) => f.name);
+
+  const choices = [...distractors, country.name].sort(() => Math.random() - 0.5);
+
+  return {
+    flag: country.flag,
+    correctName: country.name,
+    choices,
+  };
+}
+
 module.exports = {
   TRIVIA_QUESTIONS,
   TRUTH_QUESTIONS,
@@ -152,4 +171,5 @@ module.exports = {
   generateGuessCharacterQuestion,
   generateYesNoCharacterQuestion,
   generateCharacterFactQuestion,
+  generateFlagQuestion,
 };
