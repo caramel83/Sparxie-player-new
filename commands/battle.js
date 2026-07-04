@@ -2,11 +2,36 @@ const { SlashCommandBuilder } = require("discord.js");
 const { startChallenge, sendChallengeRound, launchOpenGame } = require("../gameEngine");
 const { getActiveChallenge } = require("../gameManager");
 
-// /battle = الوضع "عشوائي" — يخلط بين رتب الكلمة + خمن الشخصية + سؤال ثقافي + أسئلة HSR
+// خيارات اللعبة المتاحة بـ /battle — يحدد المستخدم أي لعبة يبي التحدي/اللعب الجماعي يستخدمها
+const MODE_CHOICES = [
+  { name: "🎲 عشوائي (كل الألعاب)", value: "random_mix" },
+  { name: "🔤 رتب الكلمة", value: "scramble" },
+  { name: "🎮 خمن الشخصية", value: "guess_btn" },
+  { name: "🧠 سؤال ثقافي", value: "trivia" },
+  { name: "🌍 خمن العلم", value: "flags" },
+  { name: "⚔️ سؤال HSR (عنصر/مسار/ندرة)", value: "quiz_battle" },
+];
+
+const MODE_LABELS = {
+  random_mix: "وضع عشوائي (رتب/خمن/ثقافي/أعلام/HSR)",
+  scramble: "رتب الكلمة",
+  guess_btn: "خمن الشخصية",
+  trivia: "سؤال ثقافي",
+  flags: "خمن العلم",
+  quiz_battle: "أسئلة HSR",
+};
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("battle")
-    .setDescription("وضع عشوائي يخلط كل الألعاب! تحدي شخص أو العب جماعي 🎲")
+    .setDescription("تحدي شخص أو العب جماعي — اختار أي لعبة تبي! 🎲")
+    .addStringOption((opt) =>
+      opt
+        .setName("اللعبة")
+        .setDescription("أي لعبة تبي تلعب؟ (افتراضي: عشوائي)")
+        .setRequired(false)
+        .addChoices(...MODE_CHOICES)
+    )
     .addUserOption((opt) =>
       opt.setName("الخصم").setDescription("تحدي شخص محدد (اختياري)").setRequired(false)
     )
@@ -15,12 +40,14 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const mode = interaction.options.getString("اللعبة") || "random_mix";
     const opponent = interaction.options.getUser("الخصم");
     const rounds = interaction.options.getInteger("جولات");
+    const modeLabel = MODE_LABELS[mode] || "وضع عشوائي";
 
     if (!opponent) {
-      await interaction.reply({ content: "🎲 ابدأت الوضع العشوائي بالقناة!", ephemeral: true });
-      await launchOpenGame(interaction.channel, "random_mix");
+      await interaction.reply({ content: `🎲 ابدأت لعبة (${modeLabel}) بالقناة!`, ephemeral: true });
+      await launchOpenGame(interaction.channel, mode);
       return;
     }
 
@@ -36,12 +63,12 @@ module.exports = {
       challengerName: interaction.user.username,
       opponentId: opponent.id,
       opponentName: opponent.username,
-      mode: "random_mix",
+      mode,
       rounds,
     });
 
     await interaction.reply(
-      `⚔️ <@${interaction.user.id}> يتحدى <@${opponent.id}> بوضع عشوائي (رتب/خمن/ثقافي/HSR)! ${challenge.totalRounds} جولات — والقناة كلها تقدر تشارك!\n**+20 نقطة** للفوز بالتحدي 🏆`
+      `⚔️ <@${interaction.user.id}> يتحدى <@${opponent.id}> بـ (${modeLabel})! ${challenge.totalRounds} جولات — والقناة كلها تقدر تشارك!\n**+20 نقطة** للفوز بالتحدي 🏆`
     );
     setTimeout(() => sendChallengeRound(interaction.channel, challenge), 1500);
   },
