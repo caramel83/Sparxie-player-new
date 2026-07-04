@@ -365,10 +365,179 @@ async function sendChallengeRound(channel, challenge) {
   });
 }
 
+// ============== Sparxie AI — خصم وهمي ==============
+const SPARXIE_ID = "sparxie_ai";
+const SPARXIE_NAME = "★ Sparxie ★";
+
+// ردود Sparxie لما تفوز أو تخسر
+const SPARXIE_WIN_LINES = [
+  "LIKE! FOLLOW! أنا الأفضل! ✨🎤",
+  "Sparxheads شافوا كيف دمّرتك؟! 📸💫",
+  "يا حبيبي، تدرّب أكثر قبل تتحداني~ 😏",
+  "هذا للـ clip! كلش سهل عليّ~ ✂️✨",
+  "STREAM مليان وأنا كاسبة — حياتي أحلى! 🎉",
+];
+const SPARXIE_LOSE_LINES = [
+  "لا لا لا! هذا مو في السكريبت! 😤",
+  "حظ! المرة الجاية أدمّرك! 🎤",
+  "الـ chat يكذب، أنا ما خسرت! 👀",
+  "واضح إنك راح تصير Sparxhead بعدها~ 😅",
+  "حسناً... ربما أحتاج تدريب شوي. ربما. 💀",
+];
+const SPARXIE_CORRECT_LINES = [
+  "✅ ★ Sparxie ★ جاوبت أول! CLIP THAT! ✨",
+  "✅ ★ Sparxie ★ دايماً على الكرار~ 🎤",
+  "✅ ★ Sparxie ★ تعرف كل شي عن الـ stream! 📸",
+];
+
+// دقة Sparxie حسب الوضع (احتمال تجيب الجواب الصحيح)
+const SPARXIE_ACCURACY = {
+  scramble: 0.45,     // رتب الكلمة — أصعب عليها
+  guess_btn: 0.60,    // خمن الشخصية
+  flags: 0.55,        // أعلام
+  trivia: 0.65,       // ثقافي
+  quiz_battle: 0.70,  // HSR — تخصصها!
+  random_mix: 0.58,   // عشوائي
+};
+
+// تأخير Sparxie بالثواني (عشوائي بين حدّين)
+function sparxieDelay(mode) {
+  if (mode === "scramble") return 4000 + Math.random() * 8000; // 4-12 ثانية (صعب عليها)
+  return 2500 + Math.random() * 6000; // 2.5-8.5 ثانية
+}
+
+// تبدأ تحدي PvE ضد Sparxie AI
+function startSparxieChallenge(channel, { challengerId, challengerName, mode, rounds }) {
+  const challengeId = generateGameId();
+  const totalRounds = rounds && rounds > 0 ? Math.min(rounds, 20) : DEFAULT_ROUNDS;
+
+  const challenge = {
+    challengeId,
+    mode,
+    players: [challengerId, SPARXIE_ID],
+    usernames: { [challengerId]: challengerName, [SPARXIE_ID]: SPARXIE_NAME },
+    scores: { [challengerId]: 0, [SPARXIE_ID]: 0 },
+    round: 0,
+    totalRounds,
+    active: true,
+    currentRound: null,
+    answeredBy: null,
+    isSparxiePvE: true, // علامة للتمييز
+    sparxieTimer: null,
+  };
+
+  setActiveChallenge(channel.id, challenge);
+  return challenge;
+}
+
+// يرسل جولة تحدي PvE مع Sparxie AI (تجاوب تلقائياً بعد تأخير)
+async function sendSparxieChallengeRound(channel, challenge) {
+  const roundMode =
+    challenge.mode === "scramble"
+      ? "scramble"
+      : challenge.mode === "random_mix"
+      ? randomFrom(["scramble", "guess_btn", "trivia", "quiz_battle", "flags"])
+      : CHALLENGE_DIRECT_MODES.has(challenge.mode)
+      ? challenge.mode
+      : "quiz_battle";
+
+  const content = buildRoundContent(roundMode);
+  challenge.currentRound = content;
+  challenge.currentRoundMode = roundMode;
+  challenge.answeredBy = null;
+
+  const p1 = challenge.players[0]; // اللاعب الحقيقي
+  const fields = [
+    ...(content.embedData.fields || []),
+    { name: challenge.usernames[p1], value: `${challenge.scores[p1]} نقطة`, inline: true },
+    { name: SPARXIE_NAME, value: `${challenge.scores[SPARXIE_ID]} نقطة`, inline: true },
+  ];
+
+  const embedData = {
+    ...content.embedData,
+    title: `🎤 ضد Sparxie — الجولة ${challenge.round + 1} من ${challenge.totalRounds}`,
+    fields,
+  };
+
+  const embed = buildEmbed(embedData);
+  let components;
+  if (content.inputType === "choice") {
+    components = choiceButtons(challenge.challengeId, content.choices);
+  } else {
+    components = [controlButtons(challenge.challengeId)];
+  }
+
+  await channel.send({
+    content: `<@${p1}> ⚔️ ${SPARXIE_NAME} — هل تقدر تتغلب عليّ؟! 😤✨`,
+    embeds: [embed],
+    components,
+  });
+
+  // Sparxie تجاوب تلقائياً بعد تأخير عشوائي
+  const accuracy = SPARXIE_ACCURACY[roundMode] || 0.58;
+  const willBeCorrect = Math.random() < accuracy;
+  const delay = sparxieDelay(roundMode);
+
+  challenge.sparxieTimer = setTimeout(async () => {
+    // لو اللاعب سبقها، توقف
+    if (!challenge.active || challenge.answeredBy !== null) return;
+
+    if (willBeCorrect) {
+      // Sparxie جاوبت صح
+      challenge.answeredBy = SPARXIE_ID;
+      challenge.scores[SPARXIE_ID]++;
+      challenge.round++;
+
+      const line = SPARXIE_CORRECT_LINES[Math.floor(Math.random() * SPARXIE_CORRECT_LINES.length)];
+      await channel.send(`${line}\nالإجابة: **${content.answer}**`);
+
+      if (challenge.round >= challenge.totalRounds) {
+        await endSparxieChallenge(channel, challenge);
+      } else {
+        setTimeout(() => sendSparxieChallengeRound(channel, challenge), 2500);
+      }
+    }
+    // لو ما جاوبت صح، تسكت — اللاعب يقدر يجاوب لحاله أو تنتهي الجولة بالتخطي
+  }, delay);
+}
+
+// ينهي التحدي PvE ويعلن النتيجة
+async function endSparxieChallenge(channel, challenge) {
+  const { clearActiveChallenge } = require("./gameManager");
+  clearActiveChallenge(channel.id);
+  challenge.active = false;
+  if (challenge.sparxieTimer) clearTimeout(challenge.sparxieTimer);
+
+  const p1 = challenge.players[0];
+  const playerScore = challenge.scores[p1];
+  const sparxieScore = challenge.scores[SPARXIE_ID];
+
+  let resultMsg;
+  if (playerScore > sparxieScore) {
+    const { addPoints } = require("./scoresManager");
+    addPoints(p1, challenge.usernames[p1], 20);
+    const loseLine = SPARXIE_LOSE_LINES[Math.floor(Math.random() * SPARXIE_LOSE_LINES.length)];
+    resultMsg =
+      `🏆 **${challenge.usernames[p1]}** فاز على Sparxie! ${playerScore}-${sparxieScore}\n` +
+      `**+20 نقطة** 🎉\nSparxie تقول: "${loseLine}"`;
+  } else if (sparxieScore > playerScore) {
+    const winLine = SPARXIE_WIN_LINES[Math.floor(Math.random() * SPARXIE_WIN_LINES.length)];
+    resultMsg =
+      `🎤 **${SPARXIE_NAME}** فازت! ${sparxieScore}-${playerScore}\n` +
+      `Sparxie تقول: "${winLine}"`;
+  } else {
+    resultMsg = `🤝 تعادل! ${playerScore}-${sparxieScore}\nSparxie: "هذا قبول! STREAM! ✨"`;
+  }
+
+  await channel.send(resultMsg);
+}
+
 module.exports = {
   RED,
   DEFAULT_ROUNDS,
   RANDOM_MIX_POOL,
+  SPARXIE_ID,
+  SPARXIE_NAME,
   generateGameId,
   controlButtons,
   yesNoButtons,
@@ -381,4 +550,7 @@ module.exports = {
   announceIdleTimeout,
   startChallenge,
   sendChallengeRound,
+  startSparxieChallenge,
+  sendSparxieChallengeRound,
+  endSparxieChallenge,
 };
