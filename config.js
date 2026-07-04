@@ -9,9 +9,6 @@ const GAME_CHANNEL_IDS = (process.env.GAME_CHANNEL_IDS || "")
   .map((id) => id.trim())
   .filter(Boolean);
 
-// قناة الألعاب التلقائية (الموجودة سابقاً)
-const AUTO_GAME_CHANNEL_ID = process.env.AUTO_GAME_CHANNEL_ID || "";
-
 // قناة الميمز التلقائية
 const MEME_CHANNEL_ID = process.env.MEME_CHANNEL_ID || "";
 
@@ -30,7 +27,6 @@ function isGameChannel(channelId) {
 
 module.exports = {
   GAME_CHANNEL_IDS,
-  AUTO_GAME_CHANNEL_ID,
   MEME_CHANNEL_ID,
   DAILY_CHANNEL_ID,
   DAILY_HOUR_UTC,
