@@ -43,6 +43,7 @@ const SIMPLE_COMMAND_ALIASES = {
   "اقتباس": "quote",
   "اكسو": "xo",
   "خمسين": "duel",
+  "اكيناتور": "akinator",
 };
 
 const PREFIX = "!";
