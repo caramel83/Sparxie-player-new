@@ -1,48 +1,84 @@
-// commands/flags.js — لعبة خمن العلم (4 أزرار اختيار)
-const { SlashCommandBuilder } = require("discord.js");
-const { launchOpenGame, startChallenge, sendChallengeRound } = require("../gameEngine");
-const { getActiveChallenge } = require("../gameManager");
+// data/flags.js — قاعدة بيانات الأعلام (إيموجي العلم + اسم الدولة)
+// تُستخدم بلعبة "أعلام" — يعرض البوت إيموجي علم، واللاعب يختار اسم الدولة الصحيح من 4 أزرار
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("flags")
-    .setDescription("خمن علم الدولة من 4 خيارات! 🌍")
-    .addUserOption((opt) =>
-      opt.setName("الخصم").setDescription("تحدي شخص محدد (اختياري)").setRequired(false)
-    )
-    .addIntegerOption((opt) =>
-      opt.setName("جولات").setDescription("عدد الجولات بالتحدي (افتراضي 5)").setRequired(false).setMinValue(1).setMaxValue(20)
-    ),
+const FLAGS = [
+  { flag: "🇸🇦", name: "السعودية" },
+  { flag: "🇪🇬", name: "مصر" },
+  { flag: "🇦🇪", name: "الإمارات" },
+  { flag: "🇰🇼", name: "الكويت" },
+  { flag: "🇶🇦", name: "قطر" },
+  { flag: "🇧🇭", name: "البحرين" },
+  { flag: "🇴🇲", name: "عُمان" },
+  { flag: "🇯🇴", name: "الأردن" },
+  { flag: "🇱🇧", name: "لبنان" },
+  { flag: "🇸🇾", name: "سوريا" },
+  { flag: "🇮🇶", name: "العراق" },
+  { flag: "🇾🇪", name: "اليمن" },
+  { flag: "🇵🇸", name: "فلسطين" },
+  { flag: "🇲🇦", name: "المغرب" },
+  { flag: "🇹🇳", name: "تونس" },
+  { flag: "🇩🇿", name: "الجزائر" },
+  { flag: "🇱🇾", name: "ليبيا" },
+  { flag: "🇸🇩", name: "السودان" },
+  { flag: "🇺🇸", name: "أمريكا" },
+  { flag: "🇬🇧", name: "بريطانيا" },
+  { flag: "🇫🇷", name: "فرنسا" },
+  { flag: "🇩🇪", name: "ألمانيا" },
+  { flag: "🇮🇹", name: "إيطاليا" },
+  { flag: "🇪🇸", name: "إسبانيا" },
+  { flag: "🇵🇹", name: "البرتغال" },
+  { flag: "🇳🇱", name: "هولندا" },
+  { flag: "🇧🇪", name: "بلجيكا" },
+  { flag: "🇨🇭", name: "سويسرا" },
+  { flag: "🇸🇪", name: "السويد" },
+  { flag: "🇳🇴", name: "النرويج" },
+  { flag: "🇩🇰", name: "الدنمارك" },
+  { flag: "🇫🇮", name: "فنلندا" },
+  { flag: "🇵🇱", name: "بولندا" },
+  { flag: "🇦🇹", name: "النمسا" },
+  { flag: "🇬🇷", name: "اليونان" },
+  { flag: "🇮🇪", name: "أيرلندا" },
+  { flag: "🇷🇺", name: "روسيا" },
+  { flag: "🇺🇦", name: "أوكرانيا" },
+  { flag: "🇹🇷", name: "تركيا" },
+  { flag: "🇨🇳", name: "الصين" },
+  { flag: "🇯🇵", name: "اليابان" },
+  { flag: "🇰🇷", name: "كوريا الجنوبية" },
+  { flag: "🇰🇵", name: "كوريا الشمالية" },
+  { flag: "🇮🇳", name: "الهند" },
+  { flag: "🇵🇰", name: "باكستان" },
+  { flag: "🇧🇩", name: "بنغلاديش" },
+  { flag: "🇮🇩", name: "إندونيسيا" },
+  { flag: "🇲🇾", name: "ماليزيا" },
+  { flag: "🇸🇬", name: "سنغافورة" },
+  { flag: "🇹🇭", name: "تايلاند" },
+  { flag: "🇻🇳", name: "فيتنام" },
+  { flag: "🇵🇭", name: "الفلبين" },
+  { flag: "🇦🇫", name: "أفغانستان" },
+  { flag: "🇮🇷", name: "إيران" },
+  { flag: "🇮🇱", name: "إسرائيل" },
+  { flag: "🇨🇦", name: "كندا" },
+  { flag: "🇲🇽", name: "المكسيك" },
+  { flag: "🇧🇷", name: "البرازيل" },
+  { flag: "🇦🇷", name: "الأرجنتين" },
+  { flag: "🇨🇱", name: "تشيلي" },
+  { flag: "🇨🇴", name: "كولومبيا" },
+  { flag: "🇵🇪", name: "بيرو" },
+  { flag: "🇻🇪", name: "فنزويلا" },
+  { flag: "🇨🇺", name: "كوبا" },
+  { flag: "🇿🇦", name: "جنوب أفريقيا" },
+  { flag: "🇳🇬", name: "نيجيريا" },
+  { flag: "🇰🇪", name: "كينيا" },
+  { flag: "🇪🇹", name: "إثيوبيا" },
+  { flag: "🇬🇭", name: "غانا" },
+  { flag: "🇦🇺", name: "أستراليا" },
+  { flag: "🇳🇿", name: "نيوزيلندا" },
+  { flag: "🇨🇿", name: "التشيك" },
+  { flag: "🇭🇺", name: "المجر" },
+  { flag: "🇷🇴", name: "رومانيا" },
+  { flag: "🇧🇬", name: "بلغاريا" },
+  { flag: "🇭🇷", name: "كرواتيا" },
+  { flag: "🇮🇸", name: "آيسلندا" },
+];
 
-  async execute(interaction) {
-    const opponent = interaction.options.getUser("الخصم");
-    const rounds = interaction.options.getInteger("جولات");
-
-    if (!opponent) {
-      await interaction.reply({ content: "🌍 ابدأت لعبة خمن العلم بالقناة!", ephemeral: true });
-      await launchOpenGame(interaction.channel, "flags");
-      return;
-    }
-
-    if (opponent.bot || opponent.id === interaction.user.id) {
-      return interaction.reply({ content: "⚠️ اختار شخص ثاني صح!", ephemeral: true });
-    }
-    if (getActiveChallenge(interaction.channelId)) {
-      return interaction.reply({ content: "⚠️ فيه تحدي شغّال بهذي القناة بالفعل!", ephemeral: true });
-    }
-
-    const challenge = startChallenge(interaction.channel, {
-      challengerId: interaction.user.id,
-      challengerName: interaction.user.username,
-      opponentId: opponent.id,
-      opponentName: opponent.username,
-      mode: "flags",
-      rounds,
-    });
-
-    await interaction.reply(
-      `⚔️ <@${interaction.user.id}> يتحدى <@${opponent.id}> بلعبة خمن العلم! والقناة كلها تقدر تشارك~`
-    );
-    setTimeout(() => sendChallengeRound(interaction.channel, challenge), 1500);
-  },
-};
+module.exports = { FLAGS };
