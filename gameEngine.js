@@ -33,6 +33,7 @@ const {
   generateGuessCharacterQuestion,
   generateYesNoCharacterQuestion,
   generateCharacterFactQuestion,
+  generateFlagQuestion,
 } = require("./data/questionBank");
 const { shuffleWord, randomFrom } = require("./utils");
 
@@ -40,7 +41,7 @@ const RED = 0xe03131;
 const DEFAULT_ROUNDS = 5;
 
 // الأنماط اللي تُخلط عشوائياً بوضع "عشوائي" (/battle و !بتل/!عشوائي)
-const RANDOM_MIX_POOL = ["scramble", "hsr_guess", "guess_btn", "trivia", "quiz_battle"];
+const RANDOM_MIX_POOL = ["scramble", "hsr_guess", "guess_btn", "trivia", "quiz_battle", "flags"];
 
 function generateGameId() {
   return Math.random().toString(36).substring(2, 8);
@@ -140,6 +141,20 @@ function buildRoundContent(mode) {
         },
         inputType: "choice",
         points: 15,
+      };
+    }
+    case "flags": {
+      const { flag, correctName, choices } = generateFlagQuestion();
+      return {
+        answer: correctName,
+        choices,
+        embedData: {
+          title: "🌍 خمن العلم!",
+          description: `هذا علم وش دولة؟\n\n# ${flag}`,
+          footer: "اضغط على اسم الدولة الصحيح! 🏆 +10 نقاط",
+        },
+        inputType: "choice",
+        points: 10,
       };
     }
     case "trivia": {
@@ -275,14 +290,6 @@ async function continueGame(channel, mode) {
   return launchOpenGame(channel, mode, true);
 }
 
-// اختيار لعبة عشوائية من الأنماط القابلة للتشغيل — تُستخدم فقط بالبوست التلقائي بالساعة
-// (AUTO_GAME_CHANNEL_ID) وليس لمتابعة جولة لعبة يدوية بعد انتهائها
-const AUTO_MODES = ["scramble", "hsr_guess", "guess_btn", "trivia"];
-async function launchRandomOpenGame(channel) {
-  const mode = randomFrom(AUTO_MODES);
-  return launchOpenGame(channel, mode, true);
-}
-
 // ============== التحدي (1v1 + مشاركة مفتوحة لبقية القناة) ==============
 // الفوز بالتحدي (+نقطة المباراة) يُحسب فقط للاعبين الأساسيين،
 // لكن أي شخص بالقناة يقدر يجاوب على كل سؤال ويحصل نقاط اللعبة العادية
@@ -307,13 +314,20 @@ function startChallenge(channel, { challengerId, challengerName, opponentId, opp
   return challenge;
 }
 
+// الأنماط اللي تدعم وضع "تحدي بأزرار اختيار" (لكل واحد منها جولة بنفس نوعه بالضبط)
+const CHALLENGE_DIRECT_MODES = new Set(["guess_btn", "trivia", "flags", "quiz_battle"]);
+
 async function sendChallengeRound(channel, challenge) {
   // وضع "عشوائي" بالتحدي يخلط بين كل الأنماط القابلة للأزرار + رتب الكلمة
+  // وضع "scramble" يبقى رتب الكلمة دايماً
+  // أي نمط آخر مدعوم مباشرة (guess_btn/trivia/flags) يكرر نفسه كل جولة
   const roundMode =
     challenge.mode === "scramble"
       ? "scramble"
       : challenge.mode === "random_mix"
-      ? randomFrom(["scramble", "guess_btn", "trivia", "quiz_battle"])
+      ? randomFrom(["scramble", "guess_btn", "trivia", "quiz_battle", "flags"])
+      : CHALLENGE_DIRECT_MODES.has(challenge.mode)
+      ? challenge.mode
       : "quiz_battle";
 
   const content = buildRoundContent(roundMode);
@@ -365,8 +379,6 @@ module.exports = {
   launchOpenGame,
   continueGame,
   announceIdleTimeout,
-  launchRandomOpenGame,
-  AUTO_MODES,
   startChallenge,
   sendChallengeRound,
 };
