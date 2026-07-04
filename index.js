@@ -23,6 +23,8 @@ const {
   controlButtons,
   buildEmbed,
   sendChallengeRound,
+  sendSparxieChallengeRound,
+  endSparxieChallenge,
   RED,
 } = require("./gameEngine");
 const { MEME_CHANNEL_ID } = require("./config");
@@ -223,6 +225,12 @@ async function revealChallengeRound(channel, challenge) {
   const round = challenge.currentRound;
   challenge.round++;
 
+  // لو تحدي PvE، وقف مؤقت Sparxie لو لسه شغال
+  if (challenge.isSparxiePvE && challenge.sparxieTimer) {
+    clearTimeout(challenge.sparxieTimer);
+    challenge.sparxieTimer = null;
+  }
+
   const winnerText = challenge.answeredBy
     ? `✅ **${challenge.answeredByName}** أجاب صح أولاً! الإجابة: **${round.answer}**`
     : `⏱️ انتهى الوقت! الإجابة كانت: **${round.answer}**`;
@@ -230,6 +238,13 @@ async function revealChallengeRound(channel, challenge) {
   await channel.send(winnerText);
 
   if (challenge.round >= challenge.totalRounds) {
+    // تحدي PvE — نستخدم endSparxieChallenge
+    if (challenge.isSparxiePvE) {
+      await endSparxieChallenge(channel, challenge);
+      return;
+    }
+
+    // تحدي PvP — النهاية الاعتيادية
     const [p1, p2] = challenge.players;
     const s1 = challenge.scores[p1];
     const s2 = challenge.scores[p2];
@@ -246,7 +261,12 @@ async function revealChallengeRound(channel, challenge) {
     clearActiveChallenge(channel.id);
     await channel.send(resultMsg);
   } else {
-    setTimeout(() => sendChallengeRound(channel, challenge), 2000);
+    // الجولة الجاية — PvE أو PvP
+    if (challenge.isSparxiePvE) {
+      setTimeout(() => sendSparxieChallengeRound(channel, challenge), 2000);
+    } else {
+      setTimeout(() => sendChallengeRound(channel, challenge), 2000);
+    }
   }
 }
 
