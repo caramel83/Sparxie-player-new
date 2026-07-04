@@ -30,6 +30,7 @@ const {
 const { MEME_CHANNEL_ID } = require("./config");
 const { startDailyScheduler, handleDailyVote } = require("./dailyManager");
 const { handlePrefixMessage } = require("./prefixRouter");
+const akinatorCommand = require("./commands/akinator");
 
 // تكمل نفس نوع اللعبة بعد انتهاء الجولة (كل لعبة مستقلة بقناتها).
 // مهلة الخمول (5 دقائق) مفعّلة تلقائياً من جوّا launchOpenGame.
@@ -103,6 +104,12 @@ client.on("interactionCreate", async (interaction) => {
   // الأزرار
   if (!interaction.isButton()) return;
   const id = interaction.customId;
+
+  // ====== أزرار الأكيناتور ======
+  if (id.startsWith("aki_")) {
+    await akinatorCommand.handleButton(interaction);
+    return;
+  }
 
   // ====== أزرار السؤال اليومي ======
   if (id.startsWith("daily_")) {
